@@ -4,9 +4,7 @@
   "description": "Bloom filter in JavaScript with double hashing, sizing formulas, and practical demos.",
   "main": "bf_simple.js",
   "scripts": {
-    "start": "npx serve .",
-    "demo": "npx serve .",
-    "visualize": "npx serve ."
+    "start": "node bf_simple.js"
   },
   "keywords": [
     "bloom-filter",
