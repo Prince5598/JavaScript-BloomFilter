@@ -1,0 +1,22 @@
+{
+  "name": "bloom-filter-js-explained",
+  "version": "1.0.0",
+  "description": "Bloom filter in JavaScript with double hashing, sizing formulas, and practical demos.",
+  "main": "bf_simple.js",
+  "scripts": {
+    "start": "npx serve .",
+    "demo": "npx serve .",
+    "visualize": "npx serve ."
+  },
+  "keywords": [
+    "bloom-filter",
+    "probabilistic-data-structure",
+    "system-design",
+    "javascript"
+  ],
+  "author": "Prince Patel",
+  "license": "MIT",
+  "dependencies": {
+    "murmurhash3js": "^3.0.1"
+  }
+}

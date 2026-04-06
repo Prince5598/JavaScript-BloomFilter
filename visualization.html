@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bloom Filter Visualizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="dynamic.css" />
+</head>
+<body>
+  <div class="bg-shape bg-shape-left" aria-hidden="true"></div>
+  <div class="bg-shape bg-shape-right" aria-hidden="true"></div>
+
+  <main class="app-shell">
+    <header class="hero">
+      <p class="eyebrow">Interactive Systems Design Demo</p>
+      <h1>Bloom Filter Visualizer</h1>
+      <p class="hero-copy">
+        Understand every intermediate step: parameter sizing, hash generation, bit mapping,
+        insert flow, contains checks, and false-positive behavior.
+      </p>
+    </header>
+
+    <section class="layout-grid">
+      <section class="panel control-panel">
+        <h2 id="guideConfig" class="section-title">
+          1) Configure Filter
+          <button class="info-dot" data-tip="Set expected items and target false-positive rate. The system computes m and k automatically." aria-label="Configure filter help">i</button>
+        </h2>
+        <div class="field-grid">
+          <label class="field">
+            <span>Expected Items (n)</span>
+            <input id="expectedItemsInput" type="number" min="1" value="100" />
+          </label>
+          <label class="field">
+            <span>False Positive Rate (p)</span>
+            <input id="fprInput" type="number" min="0.0001" max="0.99" step="0.0001" value="0.01" />
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="createFilterBtn" class="btn btn-primary">Create Filter</button>
+          <button id="guidedDemoBtn" class="btn btn-ghost">Run Guided Demo</button>
+        </div>
+
+        <h2 id="guideInteract" class="section-title">
+          2) Interact With Keys
+          <button class="info-dot" data-tip="Insert sets bits for a key. Contains checks the same positions and can return probable presence." aria-label="Interact with keys help">i</button>
+        </h2>
+        <label class="field">
+          <span>Key</span>
+          <input id="keyInput" type="text" placeholder="Example: user:12345" />
+        </label>
+        <div class="button-row">
+          <button id="insertBtn" class="btn btn-primary">Insert Key</button>
+          <button id="containsBtn" class="btn btn-ghost">Contains?</button>
+          <button id="resetBtn" class="btn btn-danger">Reset</button>
+        </div>
+
+        <div class="formula-box">
+          <p class="formula-title">Sizing Formulas</p>
+          <p class="formula-line">m = ceil( -n * ln(p) / (ln(2)^2) )</p>
+          <p class="formula-line">k = max(1, round((m / n) * ln(2)))</p>
+        </div>
+      </section>
+
+      <section id="guideVisualization" class="panel visualization-panel">
+        <h2 class="section-title">
+          Bloom Bit Array
+          <button class="info-dot" data-tip="Each key maps to k bit positions. Bit cells flip from 0 to 1 during insert and are probed during contains." aria-label="Bloom bit array help">i</button>
+        </h2>
+        <p id="statusLine" class="status-line">
+          Create a filter to start visualizing bit transitions.
+        </p>
+        <section id="guideOperation" class="operation-board" aria-live="polite">
+          <div class="operation-head">
+            <span id="opModeBadge" class="op-mode-badge is-idle">Idle</span>
+            <span id="opKeyLabel" class="op-key-label">Key: -</span>
+          </div>
+          <div class="op-grid">
+            <article class="op-card">
+              <p class="op-card-title">Hash Seeds</p>
+              <p id="opH1" class="op-value">h1: -</p>
+              <p id="opH2" class="op-value">h2: -</p>
+            </article>
+            <article class="op-card">
+              <p class="op-card-title">Current Equation</p>
+              <p id="opEquation" class="op-value op-equation">pos_i = (h1 + i * h2) % m</p>
+              <p id="opCurrentI" class="op-value">i: -</p>
+            </article>
+            <article class="op-card">
+              <p class="op-card-title">Bit Mapping</p>
+              <p id="opPosition" class="op-value">position: -</p>
+              <p id="opByteBit" class="op-value">byte: -, bit: -</p>
+              <p id="opBitFlip" class="op-value">bit state: -</p>
+            </article>
+          </div>
+          <div id="hashTrack" class="hash-track" aria-label="Hash computation walkthrough"></div>
+          <p id="nextHint" class="next-hint">Next: insert or check a key to animate each hash step.</p>
+          <div id="demoCoach" class="demo-coach" aria-live="polite">
+            <p class="demo-coach-title">Demo Coach</p>
+            <p id="demoCoachText" class="demo-coach-text">Run Guided Demo to see a narrated, slower walkthrough.</p>
+            <div class="demo-progress" role="progressbar" aria-label="Guided demo progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="demoProgressBar" class="demo-progress-bar"></div>
+            </div>
+          </div>
+        </section>
+          <div id="guideBitGrid" class="bit-grid-wrap">
+            <div id="bitGrid" class="bit-grid" role="grid" aria-label="Bloom filter bit array"></div>
+          </div>
+      </section>
+
+      <aside id="guideMetrics" class="panel side-panel">
+        <h2 class="section-title">
+          Live Metrics
+          <button class="info-dot" data-tip="Observe fill ratio and estimated false-positive rate as inserts increase." aria-label="Live metrics help">i</button>
+        </h2>
+        <ul class="metric-list">
+          <li><span class="metric-label">n (expected)</span><span id="metricExpected">-</span></li>
+          <li><span class="metric-label">p (target)</span><span id="metricFprTarget">-</span></li>
+          <li><span class="metric-label">m (bits)</span><span id="metricBits">-</span></li>
+          <li><span class="metric-label">k (hashes)</span><span id="metricHashes">-</span></li>
+          <li><span class="metric-label">Bytes</span><span id="metricBytes">-</span></li>
+          <li><span class="metric-label">Set Bits</span><span id="metricSetBits">-</span></li>
+          <li><span class="metric-label">Fill Ratio</span><span id="metricFill">-</span></li>
+          <li><span class="metric-label">Est. FPR</span><span id="metricFprEst">-</span></li>
+          <li><span class="metric-label">Inserted Keys</span><span id="metricInserted">0</span></li>
+        </ul>
+
+        <h3 id="guideLedger" class="section-title">
+          Inserted Keys So Far
+          <button class="info-dot" data-tip="This list shows unique keys inserted in this session. Duplicate inserts do not duplicate this list." aria-label="Inserted keys help">i</button>
+        </h3>
+        <ol id="insertedKeysList" class="step-trace"></ol>
+      </aside>
+    </section>
+  </main>
+
+  <button id="openGuideBtn" class="help-fab" aria-label="Open step-by-step guide">?</button>
+
+  <div id="tourOverlay" class="tour-overlay is-hidden" aria-hidden="true">
+    <div class="tour-backdrop"></div>
+    <div id="tourCard" class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tourTitle">
+      <p id="tourStepCount" class="tour-step-count">Step 1 of 1</p>
+      <h3 id="tourTitle">Welcome</h3>
+      <p id="tourDescription">This guide explains each panel and how to use the visualizer.</p>
+      <div class="tour-actions">
+        <button id="tourSkipBtn" class="btn btn-ghost" type="button">Skip</button>
+        <button id="tourPrevBtn" class="btn btn-ghost" type="button">Back</button>
+        <button id="tourNextBtn" class="btn btn-primary" type="button">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="dynamic.js"></script>
+</body>
+</html>
