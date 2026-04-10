@@ -1,368 +1,224 @@
-# Bloom Filter Handbook
+# Bloom Filter and Deletable Bloom Filter (DlBF)
 
-This repository is built for learners.
+A comprehensive, learner-focused implementation of probabilistic data structures. 
 
-The goal is simple: help you understand Bloom filters from zero to advanced, including why they are used, how they work, why false positives happen, why deletion is hard, and how a Deletable Bloom Filter (DlBF) handles deletion safely in many practical cases.
+This repository is designed to take you from zero to advanced understanding of Bloom Filters. It covers the core mechanics, the mathematics behind false positives, practical hashing strategies, and the implementation of Deletable Bloom Filters (DlBF) for safe element removal.
 
-Visualization :- https://bloom-visualization.vercel.app/ 
+**Live Interactive Visualization:** [Explore the Bloom Filter Demo](https://bloom-visualization.vercel.app/)
+
 ---
 
 ## Table of Contents
 
-1. [The Core Problem](#the-core-problem)
+1. [The Core Problem: Memory Overhead](#the-core-problem-memory-overhead)
 2. [What Is a Bloom Filter?](#what-is-a-bloom-filter)
-3. [Two Guarantees You Must Remember](#two-guarantees-you-must-remember)
-4. [How Bloom Filter Works (Step by Step)](#how-bloom-filter-works-step-by-step)
-5. [False Positives (Why They Happen)](#false-positives-why-they-happen)
-6. [How to Choose Optimal m and k](#how-to-choose-optimal-m-and-k)
-7. [Double Hashing (Practical Hashing Strategy)](#double-hashing-practical-hashing-strategy)
-8. [Why Standard Bloom Filter Cannot Delete Safely](#why-standard-bloom-filter-cannot-delete-safely)
-9. [Deletable Bloom Filter (DlBF)](#deletable-bloom-filter-dlbf)
-10. [When an Element Is Deletable vs Not Deletable](#when-an-element-is-deletable-vs-not-deletable)
+3. [Core Guarantees](#core-guarantees)
+4. [Standard Bloom Filter Operations](#standard-bloom-filter-operations)
+5. [Understanding False Positives](#understanding-false-positives)
+6. [Mathematical Optimization (Choosing m and k)](#mathematical-optimization-choosing-m-and-k)
+7. [Practical Implementation: Double Hashing](#practical-implementation-double-hashing)
+8. [The Deletion Problem in Standard Filters](#the-deletion-problem-in-standard-filters)
+9. [Deletable Bloom Filter (DlBF) Architecture](#deletable-bloom-filter-dlbf-architecture)
+10. [Deletability Conditions](#deletability-conditions)
 11. [References](#references)
 
 ---
 
-## The Core Problem
+## The Core Problem: Memory Overhead
 
-In many real systems, you repeatedly ask:
+In large-scale distributed systems and databases, you must frequently answer the question: *"Does this key exist?"*
 
-"Does this key exist?"
+Common approaches have significant drawbacks at scale:
+* **Database Queries:** Expensive and slow due to disk I/O or network latency.
+* **In-Memory Structures (Hash Tables/Trees):** Fast, but consume massive amounts of memory.
 
-Common approach:
-- Check database every time: expensive at scale
-- Keep in-memory structure (Set/hash table/tree): fast lookup, but can use high memory
-
-Your rough documentation focused on this memory overhead issue, and that is exactly where Bloom filters shine.
-
-### Memory intuition
-
-If each entry stores value plus metadata/pointers, metadata can become large for millions of elements.
+### The Memory Intuition
+Consider a traditional in-memory structure. If each entry requires 4 bytes for the value and 8 bytes for structural metadata (pointers), the total per entry is 12 bytes. 
 
 ![](/images/bf-0.png)
 
-You gave a useful intuition example:
-- Value: 4 bytes
-- Metadata (pointers/structure): 8 bytes
-- Total per entry: 12 bytes
-
 For 1,000,000 entries:
-- Actual value bytes: about 4 MB
-- Metadata bytes: about 8 MB
-- Total: about 12 MB
+* Value Storage: ~4 MB
+* Metadata Storage: ~8 MB
+* **Total Memory:** ~12 MB
 
-Even if exact numbers vary by language/runtime and data structure implementation, the learning point is correct:
-
-The storage overhead for exact key storage can be much larger than expected.
-
-Bloom filters reduce this by storing only bits, not full keys.
+While exact figures vary by language runtime, the fundamental principle remains: storing exact keys and metadata incurs massive storage overhead. Bloom filters solve this by storing only bits, drastically reducing the memory footprint.
 
 ---
 
 ## What Is a Bloom Filter?
 
-A Bloom filter is a probabilistic data structure for membership testing.
+A Bloom filter is a highly space-efficient probabilistic data structure used to test whether an element is a member of a set. 
 
-It does not store keys.
-
-It stores a compact bit array of length m and uses k hash positions per key.
-
-Because it stores only bit state, memory usage is very small compared to storing all keys exactly.
+It does not store the actual keys. Instead, it utilizes a compact bit array of length $m$ and processes each key through $k$ different hash functions to flip specific bits. Because it only tracks bit states, its memory consumption is microscopic compared to traditional exact-storage structures.
 
 ---
 
-## Two Guarantees You Must Remember
+## Core Guarantees
 
-1. No false negatives
-If Bloom filter says key is absent, it is definitely absent.
+When querying a Bloom filter, you must understand two absolute rules:
 
-2. Possible false positives
-If Bloom filter says key is present, it may be present or may be a collision artifact.in this case we need to check db so we reduce db calls for the key which definitely absent.
+1.  **No False Negatives:** If the filter indicates a key is absent, it is definitively absent.
+2.  **Possible False Positives:** If the filter indicates a key is present, it may be present, or it may be a hash collision artifact. 
 
-This is the most important mental model.
+In system architecture, this means you only perform an expensive database lookup when the Bloom filter returns true. The filter effectively intercepts and eliminates all database calls for keys that do not exist.
 
 ---
 
-## How Bloom Filter Works (Step by Step)
+## Standard Bloom Filter Operations
 
-Assume:
-- Bit array size m = 16
-- Number of hash positions k = 3
-- Initial bit array: all zeros
+Assume a simplified scenario:
+* Bit array size $m = 16$
+* Number of hash functions $k = 3$
 
-### Step 1: Bit array initialization
-
-All 16 bits are set to 0.
+### Step 1: Initialization
+The bit array is initialized with all bits set to 0.
 
 ![](/images/bf-1.png)
 
+### Step 2: Insertion
+Example: `insert("apple")`
 
-### Step 2: Insert a key
-
-Example: insert("apple")
-
-Suppose hashes give positions:
-- hash_0("apple") % 16 = 2
-- hash_1("apple") % 16 = 9
-- hash_2("apple") % 16 = 13
-
-Set bit 2, bit 9, bit 13 to 1.
+Assume the 3 hash functions return the following modulo positions: 2, 9, and 13.
+The bits at indices 2, 9, and 13 are flipped to 1.
 
 ![](/images/bf2.png)
 
-Now insert("cat")
+Example: `insert("cat")`
 
-Suppose positions:
-- 5, 9, 12
-
-Bit 9 is already 1 from "apple".
-That overlap is a normal collision in Bloom filters.
+Assume the hash positions are 5, 9, and 12. 
+Notice that bit 9 is already set to 1 from the "apple" insertion. This overlap is a standard collision and is expected behavior. Bits 5 and 12 are flipped to 1.
 
 ![](/images/bf3.png)
 
+### Step 3: Membership Query (Contains)
+To check if a key exists, compute its $k$ positions and verify the bits.
+* If **any** bit is 0: Return false (definitively absent).
+* If **all** bits are 1: Return true (probably present).
 
-### Step 3: Contains (membership query)
-
-For contains(key):
-1. Compute k positions
-2. Check each corresponding bit
-
-Rules:
-- If any bit is 0: return false immediately (definitely absent)
-- If all bits are 1: return true (probably present)
-
-Example A: contains("apple") checks 2, 9, 13
-
+**Example A: `contains("apple")`**
+Checks positions 2, 9, and 13. All are 1. Returns true.
 ![](/images/bf-4.png)
 
-- bit 2 = 1
-- bit 9 = 1
-- bit 13 = 1
-- return true
-
-Example B: contains("dog") checks 3, 9, 14
-
+**Example B: `contains("dog")`**
+Checks positions 3, 9, and 14. Bit 3 is 0. The process stops immediately and returns false.
 ![](/images/bf-5.png)
 
-- bit 3 = 0
-- stop immediately
-- return false (definite miss)
-
 ---
 
-## False Positives (Why They Happen)
+## Understanding False Positives
 
-A false positive means:
-- key was never inserted
-- but query returns true
+A false positive occurs when the query returns true for a key that was never inserted. 
 
-How?
+This happens when all $k$ hash positions for the uninserted key happen to have been set to 1 by previous, completely different insertions. 
 
-Because each of that key's k positions was already set by other keys.
-
-Example:
-- contains("grape") checks 5, 9, 12
-
+**Example:** `contains("grape")`
+Assume the hash positions for "grape" are 5, 9, and 12. 
 ![](/images/bf-6.png)
-  
-- those bits are already 1 because of previous inserts
-- query returns true even though "grape" was never inserted
 
-This behavior is expected and allowed.
-
-Bloom filters trade exactness for memory efficiency and speed.
+Even though "grape" was never inserted, bits 5, 9, and 12 are all currently 1 due to the earlier insertions of "apple" and "cat". The filter returns true. This tradeoff of exactness for speed and memory efficiency is the defining characteristic of the data structure.
 
 ---
 
-## How to Choose Optimal m and k
+## Mathematical Optimization (Choosing m and k)
 
-Given:
-- n = expected number of inserted items
-- p = desired false positive probability
+To construct an optimal Bloom filter, you must define:
+* $n$ = Expected number of items to be inserted.
+* $p$ = Acceptable false positive probability rate.
 
-Use these formulas:
+The optimal bit array size ($m$) and number of hash functions ($k$) are calculated as follows:
 
-```
-m = -n * ln(p) / (ln(2)^2)
-k = (m / n) * ln(2)
-```
+$$m = -\frac{n \cdot \ln(p)}{(\ln(2))^2}$$
 
-Implementation notes:
-- m: round up with ceil
-- k: round to nearest integer, ensure k >= 1
+$$k = \left(\frac{m}{n}\right) \cdot \ln(2)$$
 
-### Example intuition
-
-If n grows and m stays fixed, false positives increase.
-
-If you want lower p, you need a larger m (more memory) and usually a larger k.
-
-So Bloom filter tuning is a balance between:
-- memory budget
-- acceptable false positive rate
+**Implementation Notes:**
+* Round $m$ up to the nearest integer.
+* Round $k$ to the nearest integer, ensuring $k \ge 1$.
+* As $n$ grows, if $m$ remains fixed, the false positive rate $p$ will rapidly degrade.
 
 ---
 
-## Double Hashing (Practical Hashing Strategy)
+## Practical Implementation: Double Hashing
 
-Using k completely different hash algorithms is expensive.
+Executing $k$ separate, distinct hash functions (like SHA-256 or MurmurHash) for every operation is computationally expensive. Standard implementations use a "Double Hashing" strategy to simulate $k$ hash functions using only two base hashes ($h_1$ and $h_2$).
 
-Practical approach:
-- Compute two base hashes h1 and h2
-- Generate each position using:
+$$pos_i = (h_1 + i \cdot h_2) \pmod m$$
+*(where $i$ ranges from $0$ to $k-1$)*
 
-```
-pos_i = (h1 + i * h2) % m
-for i = 0, 1, 2, ..., k-1
-```
-
-Your rough documentation correctly described this.
-
-### Example flow
-
-key = "apple"
-
-- h1 = MurmurHash3(key, seed=0)
-- h2 = MurmurHash3(key, seed=1)
-
-Then:
-- i=0 -> pos_0 = (h1 + 0*h2) % m
-- i=1 -> pos_1 = (h1 + 1*h2) % m
-- i=2 -> pos_2 = (h1 + 2*h2) % m
+**Example Flow for "apple":**
+1. $h_1$ = MurmurHash3("apple", seed=0)
+2. $h_2$ = MurmurHash3("apple", seed=1)
+3. $pos_0 = (h_1 + 0 \cdot h_2) \pmod m$
+4. $pos_1 = (h_1 + 1 \cdot h_2) \pmod m$
+5. $pos_2 = (h_1 + 2 \cdot h_2) \pmod m$
 
 ---
 
-## Why Standard Bloom Filter Cannot Delete Safely
+## The Deletion Problem in Standard Filters
 
-In standard Bloom filters, bits are shared.
+Standard Bloom filters do not support safe deletion because bits are shared across multiple keys.
 
-If you clear bits for one key, you may clear a bit needed by another key, which creates false negatives.
-
-### Demonstration
-
-Suppose:
-- apple -> bits 2, 9, 13
-- cat -> bits 5, 9, 12
-
-Bit 9 is shared.
-
-If you naively delete apple by clearing 2, 9, 13:
-
-- bit 9 becomes 0
-- contains("cat") checks 5, 9, 12
+If you attempt to delete "apple" by resetting its bits (2, 9, 13) to 0, you will simultaneously reset bit 9. Because bit 9 is also relied upon by "cat", a subsequent query for `contains("cat")` will encounter a 0 at position 9 and return false. 
 
 ![](/images/bf-7.png)
-  
-- bit 9 is now 0
-- returns false even though cat was inserted
 
-That is a false negative, which breaks the core Bloom guarantee.
-
-So exact safe deletion is not supported in a normal Bloom filter.
+This creates a **false negative**, which violates the primary guarantee of the data structure.
 
 ---
 
-## Deletable Bloom Filter (DlBF)
+## Deletable Bloom Filter (DlBF) Architecture
 
-DlBF introduces a smart tradeoff: allow deletion only when it is safe.
+The Deletable Bloom Filter (DlBF) introduces a structural tradeoff: it tracks collisions to allow safe deletion where possible.
 
-### Region approach
-
-1. Divide the main bit array into r regions
-2. Keep a collision bitmap of r bits
-3. collisionBitmap[j] = 1 means region j has seen collisions
-
-Conceptual view:
-- Main bit array for membership
-- Small region-collision map for delete safety
+### The Region Approach
+1. The primary bit array is divided into $r$ distinct regions.
+2. A secondary collision bitmap of length $r$ is maintained.
+3. If `collisionBitmap[j] == 1`, it indicates that a hash collision has occurred within region $j$.
 
 ![](/images/bf-8.png)
 
-### Insert in DlBF
+### DlBF Insertion
+During insertion, for each of the $k$ hashed positions:
+1. Identify the region the target bit belongs to.
+2. If the target bit is already 1, mark that specific region as collided in the collision bitmap.
+3. Set the target bit to 1.
 
-For each hashed position:
-1. Find its region
-2. If target bit is already 1, mark that region as collided
-3. Set the bit to 1
-
-Example: insert("apple")
-
-Suppose hashes give positions:
-- hash_0("apple") % 16 = 2
-- hash_1("apple") % 16 = 9
-- hash_2("apple") % 16 = 13
-
+**Example: `insert("apple")`** -> Positions 2, 9, 13.
+No bits were previously set, so no regions are marked as collided.
 ![](/images/bf-11.png)
 
-Set bit 2, bit 9, bit 13 to 1. no collision in any region.
-
-Now insert("cat")
-
-Suppose positions:
-- 5, 9, 12
-
+**Example: `insert("cat")`** -> Positions 5, 9, 12.
+Bit 9 is already 1 (from "apple"). Bit 9 resides in Region 3 (R3). Therefore, R3 is marked as collided (1) in the collision bitmap.
 ![](/images/bf-9.png)
 
-Bit 9 is already 1 from "apple".bit 9 belongs into the R3. so R3 is marked with 1 which represents there is collision in this region.
+### DlBF Deletion
+To delete a key, check the $k$ hashed positions against the collision bitmap:
+* If the position's region is collision-free (0), it is safe to reset the bit to 0.
+* If the position's region is marked as collided (1), the bit must remain unchanged to prevent false negatives.
 
-
-### Contains in DlBF
-
-Same as standard Bloom filter:
-- all k bits 1 -> probably present
-- any bit 0 -> definitely absent
-
-### Delete in DlBF
-
-For each hashed position of the key:
-- If its region is collision-free, clear the bit (safe)
-- If its region is marked collided, skip clearing (unsafe)
-
-Now Delete("apple")
-
-- hash positions -> 2,9,13
-- first check position belongs into the particular region are collision-free or not. 0 -> safe, 1 -> unsafe
-- 2 -> R1 = 0 (safe) -> clear bit 2.
-- 9 -> R3 = 1 (unsafe) -> do not clear bit 9.
-- 13 -> R4 = 0 (safe) -> clear bit 13.
+**Example: `delete("apple")`** (Positions 2, 9, 13)
+* Position 2 (Region 1): Collision-free. Safe to clear.
+* Position 9 (Region 3): Collided. Do not clear.
+* Position 13 (Region 4): Collision-free. Safe to clear.
 
 ![](/images/bf-10.png)
 
-This prevents unsafe deletion from collided regions.
-now check for 'cat' is exists or not :-
-- hash postions -> 5, 9, 12 -> all three are 1. so you Successfully deleted the apple without altering the other keys.
-  
+Because bits 2 and 13 were successfully cleared, `contains("apple")` will now find a 0 and correctly return false. Because bit 9 was preserved, `contains("cat")` remains intact and returns true. Deletion was successful without corrupting the filter.
+
 ---
 
-## When an Element Is Deletable vs Not Deletable
+## Deletability Conditions
 
-### Deletable case
+A DlBF does not guarantee that every element can be deleted.
 
-- If at least one of the key's k positions is in a collision-free region, that bit can be cleared.
+* **Successfully Deletable:** An element is conceptually deleted as long as *at least one* of its $k$ bits resides in a collision-free region and can be cleared. Once a single bit is 0, the membership query evaluates to false.
+* **Non-Deletable:** If *all* $k$ positions for a key reside in regions marked as collided, the key cannot be safely deleted. It will remain in the filter as a permanent false positive. 
 
-- Once at least one required bit becomes 0, contains(key) will return false.
-
-### Not deletable case
-
-- If all k positions are in collided regions, no safe bit can be cleared.
-
-- The element remains and may continue to appear as present.
-
-- This is acceptable in Bloom-filter semantics because false positives are already allowed.
-
-### Important clarification about deletion percentage
-
-Actual deletability depends on:
-- load factor (how full the filter is)
-- collision pattern
-- number of regions r
-- m, k, and insertion distribution
-
-In many practical scenarios, partial deletion is useful, but the exact rate is workload-dependent.
+**Note on Efficiency:** The actual deletability percentage relies heavily on the filter's load factor, the number of regions ($r$), and the ratio of $m$ to $n$.
 
 ---
 
 ## References
 
-- Christian Esteve Rothenberg, Carlos A. B. Macapuna, Fábio L. Verdi, Maurício F. Magalhães  
-  *The Deletable Bloom Filter – A New Member of the Bloom Family*
+* Rothenberg, C. E., Macapuna, C. A. B., Verdi, F. L., & Magalhães, M. F. *The Deletable Bloom Filter – A New Member of the Bloom Family*.
